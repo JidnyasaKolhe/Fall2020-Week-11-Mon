@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Bar-Brush</title>
+    <style>
+        svg{
+            width: 50vw;
+            height: 50vw;
+        }
+    </style>
+    <script src="https://d3js.org/d3.v6.min.js"></script>
+    <link rel="stylesheet" href="styles/style.css?rr">
+    <script src="js/bar_brushSelect.js?22"></script>
+</head>
+<body>
+<div>
+    <svg viewBox="0 0 1000 1000" id="barplot">
+    </svg>
+</div>
+<script>
+    d3.csv("data.csv")
+        .then(
+            function (data){
+                let values = []
+                let bins = []
+                d3.map(data,function (d){
+                    bins.push(d.Year);
+                    values.push(d.Rate);
+                })
+
+                console.log(data)
+
+                barplot(values, bins,
+                    "#barplot",
+                    title = "Plot",
+                    xL = "year",
+                    yL = "rate")
+            }
+        )
+</script>
+</body>
+</html>
