@@ -2,42 +2,223 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Bar-Brush</title>
+    <title>US Elections D3 - Map</title>
+    <script src="https://d3js.org/d3.v6.min.js"></script>
+    <script src="https://d3js.org/topojson.v2.min.js"></script>
     <style>
-        svg{
-            width: 50vw;
-            height: 50vw;
+        .tooltipData{
+            font-size: small;
+        }
+        #tooltip{
+            opacity: 0;
+            background-color: #f5f3f0;
+            position: absolute;
+            font-family: sans-serif;
+            font-size: medium;
+            width: 160px;
+            height: 100px;
+        }
+
+        #caption{
+            margin: auto;
+            padding-top: 1%;
+            padding-bottom: 1%;
+            padding-left: 4%;
+            font-family: serif;
+            font-size: 20pt;
+        }
+        #container
+        {
+            width: 90vw;
+            height: 80vh;
+        }
+        #canvas
+        {
+            width: 90vw;
+            height: 80vh;
+            background-color: #fffefe;
+        }
+        path.path_geo{
+            stroke-width: .1px;
+            stroke: black;
+            fill-opacity: .8;
+        }
+        .gop{
+            fill: none;
+            stroke: #00ff2a;
+            stroke-width: 4px;
+            stroke-opacity: .8;
+
+        }
+        .dems{
+            fill: none;
+            stroke: #84bc00;
+            stroke-width: 4px;
+            stroke-opacity: .8;
+        }
+        .county_name{
+            font-family: sans-serif;
+            font-size: medium;
+            color: rgb(197, 21, 21);
+            font-weight: bold;
+
         }
     </style>
-    <script src="https://d3js.org/d3.v6.min.js"></script>
-    <link rel="stylesheet" href="styles/style.css?rr">
-    <script src="js/bar_brushSelect.js?22"></script>
 </head>
 <body>
+<div id="caption">
+    US Election Results by State.
+</div>
+
+
+<div id="container">
+    <svg id="canvas" width="100vw" height="100vh" viewBox="0 0 1000 800">
+    </svg>
+</div>
 <div>
-    <svg viewBox="0 0 1000 1000" id="barplot">
+
+</div>
+<div id="tooltip">
+    <svg id="svg_tooltop" width="100%" height="100%" viewBox="0 0 200 100">
     </svg>
 </div>
 <script>
-    d3.csv("data.csv")
-        .then(
-            function (data){
-                let values = []
-                let bins = []
-                d3.map(data,function (d){
-                    bins.push(d.Year);
-                    values.push(d.Rate);
-                })
+    let dem_color = "#FF0000"
+    let gop_color = "#0015BC"
 
-                console.log(data)
+    // load the data sources:
+    // source 1
+    let us_recent = "data/aggregate_2020.csv"
+    let us_old = "data/old_aggregate.csv"
+    // source 2: US Census Counties geojson
+    let geojson = "data/cb_2018_us_state_topo.json";
 
-                barplot(values, bins,
-                    "#barplot",
-                    title = "Plot",
-                    xL = "year",
-                    yL = "rate")
-            }
+    Promise.all(
+        [
+            d3.json(geojson),
+            d3.csv(us_old),
+            d3.csv(us_recent)]
+            ,d3.autoType()).then(main)
+
+    function main(data){
+        let width = 1000
+        let height= 1000
+        let svg = d3.select('#canvas')
+        let projection = d3.geoAlbersUsa()
+            .scale(1200).translate([width/2, 2*height/5])
+        let geoJson = topojson.feature(data[0], data[0].objects.cb_2018_us_state_5m).features;
+        let geo_generator = d3.geoPath().projection(projection);
+
+        // Step 5: first load 2008 to 2016 data into dictionary
+        let election_data = {}
+        d3.map(data[1],function (d) {election_data[d.state_name] =
+                    {   name: d.state_name,
+                        totals: [+d.total_2008,+d.total_2012,+d.total_2016],
+                        dems:[+d.dem_2008,+d.dem_2012,+d.dem_2016],
+                        gop:[+d.gop_2008,+d.gop_2012,+d.gop_2016]}})
+        d3.map(data[2],function (d) {
+            try {
+                election_data[d.state_name]['totals'].push(+d.total_votes)
+                election_data[d.state_name]['dems'].push(+d.votes_dem)
+                election_data[d.state_name]['gop'].push(+d.votes_gop)}
+            catch (error)
+            {console.log(error)}})
+
+        let mapC= svg.append('g')
+        mapC.selectAll('path')
+            .data(geoJson)
+            .enter()
+            .append('path')
+            .attr("class","path_geo")
+            .attr("d",geo_generator)
+            .style("fill",function (d){
+                try{
+                    console.log(d)
+                    if(election_data[d.properties.NAME]["dems"][3]<election_data[d.properties.NAME]["gop"][3]){
+                        return dem_color
+                    }
+                    else{
+                        return gop_color
+                    }
+                }
+                catch (error)
+                {
+                    return "white"
+                }
+            })
+            .on("mousemove",function (mouseD,d){
+                tooltip_html(d.properties.NAME)
+                d3.select('#tooltip')
+                    .style("opacity",.8)
+                    .style("left",(mouseD.clientX+10).toString()+"px")
+                    .style("top",(mouseD.clientY+10).toString()+"px")
+            })
+
+
+
+
+        svg.call(d3.zoom()
+            .extent([[0,0],[1000,1000]])
+            .scaleExtent([1,12])
+            .on("zoom",zoomed)
         )
+        function zoomed({transform}){
+            mapC.attr("transform",transform)
+        }
+
+
+   function tooltip_html(fips){
+    let margin={x:30,y:0}
+    let plot_height = 90
+    let history_dems = election_data[fips]['dems']
+    let history_gop = election_data[fips]['gop']
+    let extent = d3.extent([history_dems,history_gop].flat(),function (d){return d})
+    let xScale=d3.scaleLinear().domain([2006,2020]).range([0,150])
+    let yScale=d3.scaleLinear().domain(extent).range([plot_height,0])
+    let x_axis_values = [2008, 2012,2016,2020]
+    let lineGenerator = d3.line()
+            .x(function(d, i) {
+                return xScale(x_axis_values[i]);
+            })
+            .y(function(d) {
+                return yScale(d);
+            });
+    let demsLine = lineGenerator(history_dems);
+    let gopLine = lineGenerator(history_gop);
+
+    let svg_tooltip = d3.select("#svg_tooltop")
+       svg_tooltip.selectAll('g').remove()
+       svg_tooltip.append('g').attr("transform",`translate(${margin.x},${margin.y})`)
+           .append("text")
+           .attr("x",20)
+           .attr('y',1)
+           .text(election_data[fips]['name'])
+           .attr("class","county_name")
+
+       svg_tooltip.selectAll('g').append('path').attr("d",demsLine).attr("class","dems")
+       svg_tooltip.selectAll('g').append('path').attr("d",gopLine).attr("class","gop")
+
+       // formatting numbers in y axis to look human readable:
+       let formatValue = d3.format(".2s");
+       // x and y Axis function
+       let x_axis = d3.axisBottom(xScale).ticks(2)
+       let y_axis = d3.axisLeft(yScale).ticks(4).tickFormat(function(d) { return formatValue(d)});
+       //X Axis
+       svg_tooltip.append("g").attr("class","axis")
+           .attr("transform", `translate(${margin.x},${plot_height})`)
+           .call(x_axis)
+       // Y Axis
+       svg_tooltip.append("g").attr("class","axis")
+           .attr("transform", `translate(${margin.x},${0})`)
+           .call(y_axis)
+
+
+   }}
+
+
+
+
+
 </script>
 </body>
 </html>
